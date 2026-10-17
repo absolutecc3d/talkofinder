@@ -1,0 +1,151 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talkomatic Avatar Generator</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:#101116;color:#f4f4f7;font-family:Inter,Arial,sans-serif;display:grid;place-items:center;padding:24px}
+main{width:100%;max-width:520px;background:#191a22;border:1px solid #30313d;padding:28px}
+h1{font-size:25px;margin:0 0 8px}
+p{color:#a7a8b5;line-height:1.5;font-size:14px}
+label{display:block;font-size:13px;margin:20px 0 8px;color:#d6d6df}
+input{width:100%;padding:13px;background:#101116;border:1px solid #3a3b48;color:white;font:inherit;outline:none}
+input:focus{border-color:#8b78ff}
+button{width:100%;padding:13px;border:0;background:#8b78ff;color:#fff;font-weight:700;font-size:14px;cursor:pointer;margin-top:18px}
+button:disabled{opacity:.6;cursor:wait}
+#status{padding:12px;background:#101116;border:1px solid #30313d;margin-top:18px;white-space:pre-wrap;overflow-wrap:anywhere}
+#result{display:none;margin-top:20px}
+img{width:96px;height:96px;object-fit:cover;margin:12px 0}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101116;padding:14px;border:1px solid #30313d;color:#c9c0ff}
+.copy{background:#30313d}
+.small{font-size:12px}
+</style>
+</head>
+<body>
+<main>
+<h1>Talkomatic Avatar Generator</h1>
+<p>Enter a Discord bot token and a user's Discord ID to generate the avatar configuration.</p>
+
+<form id="avatarForm">
+<label for="token">Discord bot token</label>
+<input id="token" type="password" autocomplete="off" required placeholder="Paste your bot token">
+
+<label for="discordId">Discord user ID</label>
+<input id="discordId" type="text" inputmode="numeric" autocomplete="off" required placeholder="1368272513070534807">
+
+<button id="generate" type="submit">Get avatar configuration</button>
+</form>
+
+<div id="status" role="status">Checking local server...</div>
+
+<div id="result">
+<img id="avatar" alt="Discord avatar">
+<pre id="output"></pre>
+<button class="copy" id="copy" type="button">Copy configuration</button>
+</div>
+
+<p class="small">Your bot token is sent only to your local server at 127.0.0.1:3000. Never share it with anyone.</p>
+</main>
+
+<script>
+const form = document.getElementById("avatarForm");
+const tokenInput = document.getElementById("token");
+const idInput = document.getElementById("discordId");
+const statusBox = document.getElementById("status");
+const generateButton = document.getElementById("generate");
+const resultBox = document.getElementById("result");
+const output = document.getElementById("output");
+const avatar = document.getElementById("avatar");
+const copyButton = document.getElementById("copy");
+
+async function checkServer() {
+  try {
+    const response = await fetch("/api/status");
+    const data = await response.json();
+    statusBox.textContent = data.status === "online"
+      ? "Local server connected."
+      : "Unexpected server response.";
+  } catch {
+    statusBox.textContent = "Cannot connect. Open http://127.0.0.1:3000 and ensure node server.js is running.";
+  }
+}
+
+form.addEventListener("submit", async event => {
+  event.preventDefault();
+
+  const token = tokenInput.value.trim();
+  const discordId = idInput.value.trim();
+
+  if (!token) {
+    statusBox.textContent = "Enter your Discord bot token.";
+    return;
+  }
+
+  if (!/^\d{17,20}$/.test(discordId)) {
+    statusBox.textContent = "Enter a valid Discord user ID containing 17–20 digits.";
+    return;
+  }
+
+  generateButton.disabled = true;
+  resultBox.style.display = "none";
+  statusBox.textContent = "Looking up Discord avatar...";
+
+  try {
+    const response = await fetch("/api/avatar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: token,
+        discordId: discordId
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Request failed.");
+    }
+
+    if (!data.hash) {
+      throw new Error(data.message || "No custom avatar was found.");
+    }
+
+    const config = {
+      avatar: {
+        discordId: String(data.discordId),
+        hash: data.hash,
+        animated: Boolean(data.animated)
+      }
+    };
+
+    output.textContent = JSON.stringify(config, null, 2);
+
+    const extension = data.animated ? "gif" : "png";
+    avatar.src = `https://cdn.discordapp.com/avatars/${data.discordId}/${data.hash}.${extension}?size=256`;
+
+    resultBox.style.display = "block";
+    statusBox.textContent = "Avatar configuration generated.";
+  } catch (error) {
+    statusBox.textContent = error.message || "Something went wrong.";
+  } finally {
+    generateButton.disabled = false;
+  }
+});
+
+copyButton.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(output.textContent);
+    copyButton.textContent = "Copied!";
+    setTimeout(() => copyButton.textContent = "Copy configuration", 1500);
+  } catch {
+    statusBox.textContent = "Copy failed. Select and copy the configuration manually.";
+  }
+});
+
+checkServer();
+</script>
+</body>
+</html>
